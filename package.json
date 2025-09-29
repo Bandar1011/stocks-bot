@@ -7,8 +7,10 @@
     "build": "tsc -p tsconfig.json",
     "start:intraday": "node --enable-source-maps dist/main.js --mode intraday",
     "start:eod": "node --enable-source-maps dist/main.js --mode eod",
+    "start:eod-news": "node --enable-source-maps dist/main.js --mode eod-news",
     "dev:intraday": "tsx src/main.ts --mode intraday",
     "dev:eod": "tsx src/main.ts --mode eod",
+    "dev:eod-news": "tsx src/main.ts --mode eod-news",
     "dev:commands": "tsx src/runCommands.ts"
   },
   "dependencies": {

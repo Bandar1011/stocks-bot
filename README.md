@@ -49,3 +49,8 @@ Notes
   - `/news TSLA,AAPL 7d` (specific tickers, 7 days)
   - `/news 2w TSLA` (order-independent)
  - `/price` returns realtime quotes (watchlist by default, or pass tickers: `/price TSLA,AAPL`).
+ - `/news` now returns a per-ticker Buy/Sell/Hold with confidence based on recent headlines (Gemini if configured, otherwise heuristic). This is informational only, not investment advice.
+
+Scheduling
+- EOD prices: `npm run start:eod`
+- EOD news signals: `npm run start:eod-news`

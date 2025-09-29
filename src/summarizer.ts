@@ -10,6 +10,13 @@ export interface SummaryItem {
   url: string;
 }
 
+export interface TickerDecision {
+  ticker: string;
+  action: "Buy" | "Sell" | "Hold";
+  confidence: number; // 0..100
+  rationale: string; // <= 140 chars
+}
+
 function coerceItem(obj: any): SummaryItem {
   const ticker = String(obj?.ticker || "").toUpperCase();
   const labelRaw = String(obj?.label || "Neutral");
@@ -74,6 +81,117 @@ export async function summarizeNews(items: any[], geminiApiKey?: string, geminiM
   } catch {
     return fallbackSummaries(items);
   }
+}
+
+export async function analyzeTickers(
+  items: any[],
+  geminiApiKey?: string,
+  geminiModel = "gemini-2.0-flash"
+): Promise<TickerDecision[]> {
+  if (!items?.length) return [];
+
+  // Group titles by ticker
+  const grouped: Record<string, { title: string; source: string; url: string }[]> = {};
+  for (const it of items) {
+    const t = String(it?.ticker || "").toUpperCase();
+    if (!t) continue;
+    (grouped[t] ||= []).push({
+      title: String(it?.title || ""),
+      source: String(it?.source || ""),
+      url: String(it?.url || ""),
+    });
+  }
+  const tickers = Object.keys(grouped);
+  if (!tickers.length) return [];
+
+  if (geminiApiKey) {
+    try {
+      const { GoogleGenerativeAI } = await import("@google/generative-ai");
+      const genAI = new GoogleGenerativeAI(geminiApiKey);
+      const model = genAI.getGenerativeModel({ model: geminiModel });
+
+      const payload = tickers.map((tk) => ({
+        ticker: tk,
+        headlines: grouped[tk].map((h) => ({ title: h.title, source: h.source })),
+      }));
+      const instructions = [
+        "You are an equity news analyst.",
+        "Deeply analyze the directional signal implied by the provided headlines ONLY (no external knowledge).",
+        "Weigh P1-style events (earnings beat/miss, guidance changes, recalls, investigations, M&A, explicit >5% move) more heavily.",
+        "Consider recency and repeated themes. If signals conflict, prefer Hold with lower confidence.",
+        "rationale MUST be a concrete critical reason for WHY the chosen action makes sense AND WHY the confidence level is appropriate (e.g., 'beat and raised FY25 guide; multiple bullish P1 items in last week → higher confidence'). Keep it concise (<=140 chars).",
+        "Output ONLY JSON array: {ticker, action, confidence, rationale} with action ∈ {Buy,Sell,Hold}, confidence 0..100 integer, rationale <= 140 chars.",
+        "Think step-by-step internally, but do not expose chain-of-thought."
+      ].join("\n");
+      const prompt = JSON.stringify({ instructions, items: payload });
+
+      const result: any = await model.generateContent({
+        contents: [
+          { role: "user", parts: [{ text: "Task: Recommend Buy/Sell/Hold with confidence per ticker. Output JSON only." }, { text: prompt }] },
+        ],
+        generationConfig: { temperature: 0.1, responseMimeType: "application/json" } as any,
+      } as any);
+
+      const text = (result.response.text?.() as string) || (result.response.text as any) || "";
+      const data = JSON.parse(text);
+      const arr = Array.isArray(data) ? data : [];
+      const coerce = (o: any): TickerDecision => {
+        const ticker = String(o?.ticker || "").toUpperCase();
+        let action = String(o?.action || "Hold");
+        action = action === "Buy" || action === "Sell" ? action : "Hold";
+        let confidence = Number(o?.confidence);
+        if (!Number.isFinite(confidence)) confidence = 50;
+        confidence = Math.max(0, Math.min(100, Math.round(confidence)));
+        let rationale = String(o?.rationale || "").trim();
+        if (!rationale || /generic|no significant|unclear|mixed headlines/i.test(rationale)) {
+          // Build a concrete fallback from the most salient headline
+          const top = (grouped[ticker] && grouped[ticker][0]?.title) || "news mix";
+          rationale = `Key: ${top}`;
+        }
+        if (rationale.length > 140) rationale = rationale.slice(0, 140);
+        return { ticker, action: action as TickerDecision["action"], confidence, rationale };
+      };
+      const out = arr.filter((x: any) => x && x.ticker).map(coerce);
+      if (out.length) return out;
+    } catch {
+      // fall through to heuristic
+    }
+  }
+
+  // Heuristic fallback: reuse summarizeNews and score per ticker
+  const summaries = await summarizeNews(items, undefined, geminiModel);
+  const byTicker: Record<string, SummaryItem[]> = {};
+  for (const s of summaries) {
+    (byTicker[s.ticker] ||= []).push(s);
+  }
+  const decisions: TickerDecision[] = [];
+  for (const tk of Object.keys(byTicker)) {
+    const arr = byTicker[tk];
+    let score = 0;
+    let good = 0;
+    let bad = 0;
+    for (const s of arr) {
+      if (s.label === "Good") {
+        score += s.priority === "P1" ? 2 : 1;
+        good += 1;
+      } else if (s.label === "Bad") {
+        score -= s.priority === "P1" ? 2 : 1;
+        bad += 1;
+      }
+    }
+    let action: "Buy" | "Sell" | "Hold" = "Hold";
+    if (score > 0) action = "Buy";
+    else if (score < 0) action = "Sell";
+    const n = arr.length;
+    const absScore = Math.abs(score);
+    let confidence = Math.min(90, 40 + 10 * Math.log10(Math.max(1, n))) + Math.min(10, absScore * 3);
+    confidence = Math.round(Math.max(10, Math.min(95, confidence)));
+    const rationale = (good === 0 && bad === 0)
+      ? "Mixed/low-signal headlines in window"
+      : `Net ${good} good vs ${bad} bad (P1 weighted)`;
+    decisions.push({ ticker: tk, action, confidence, rationale });
+  }
+  return decisions;
 }
 
 

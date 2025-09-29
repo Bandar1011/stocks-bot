@@ -2,7 +2,7 @@ import axios from "axios";
 import { Storage } from "./storage.js";
 import { Config } from "./config.js";
 import { fetchNews } from "./news.js";
-import { summarizeNews } from "./summarizer.js";
+import { summarizeNews, analyzeTickers } from "./summarizer.js";
 import { sendMessage } from "./telegramClient.js";
 import { buildRealtimePrices } from "./prices.js";
 
@@ -100,9 +100,15 @@ export class TgCommandHandler {
           if (!items.length) return this.send(chatId, `No headlines found in the last ${lookbackHours}h.`);
           fresh = items;
         }
-        const results = await summarizeNews(fresh, this.cfg.geminiApiKey, this.cfg.geminiModel);
-        const msg = this.formatDigest(results, lookbackHours);
-        await this.send(chatId, msg);
+        const decisions = await analyzeTickers(fresh, this.cfg.geminiApiKey, this.cfg.geminiModel);
+        if (!decisions.length) {
+          const results = await summarizeNews(fresh, this.cfg.geminiApiKey, this.cfg.geminiModel);
+          const msg = this.formatDigest(results, lookbackHours);
+          await this.send(chatId, msg);
+        } else {
+          const text = this.formatDecisions(decisions, lookbackHours);
+          await this.send(chatId, text);
+        }
       } catch (e) {
         await this.send(chatId, "Failed to fetch news. Try again later.");
       }
@@ -160,6 +166,28 @@ export class TgCommandHandler {
       lines.push(`- ${r.priority} ${r.label}: ${r.title} (${r.source})`);
       if (r.url) lines.push(`  ${r.url}`);
       if (r.why) lines.push(`  Why: ${r.why}`);
+    }
+    return lines.join("\n");
+  }
+
+  private formatDecisions(decisions: any[], hours: number): string {
+    const lines: string[] = [];
+    lines.push(`News-based Signals (last ${hours}h)`);
+    const sorted = [...decisions].sort((a, b) => String(a.ticker).localeCompare(String(b.ticker)));
+    for (const d of sorted) {
+      const conf = Math.max(0, Math.min(100, Number(d.confidence) || 0));
+      const stars = Math.max(1, Math.min(5, Math.round(conf / 20)));
+      const starStr = "★".repeat(stars) + "☆".repeat(5 - stars);
+      lines.push(`- ${d.ticker}: ${d.action} (${conf}% | ${starStr})`);
+      // defer rationale to the bottom summary
+      if (d.rationale) lines.push(`  `);
+    }
+    // bottom section with critical reasons per ticker
+    lines.push("");
+    lines.push("Reasons:");
+    for (const d of sorted) {
+      if (!d.rationale) continue;
+      lines.push(`- ${d.ticker}: ${d.rationale}`);
     }
     return lines.join("\n");
   }

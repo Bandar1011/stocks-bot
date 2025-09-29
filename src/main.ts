@@ -6,6 +6,7 @@ import { Storage } from "./storage.js";
 import { summarizeNews } from "./summarizer.js";
 import { sendMessage } from "./telegramClient.js";
 import { buildEodSummary } from "./prices.js";
+import { analyzeTickers } from "./summarizer.js";
 
 function formatIntradayDigest(results: any[], hours: number): string {
   if (!results.length) return `No notable new items in the last ${hours}h.`;
@@ -60,13 +61,37 @@ async function runEod() {
   await sendMessage(cfg.telegramBotToken, cfg.telegramChatId, msg);
 }
 
+async function runEodNews() {
+  const cfg = loadConfig();
+  const storage = new Storage(cfg.sqlitePath);
+  const tickers = getTickersFromDbOrEnv(storage, cfg.tickers, cfg.telegramChatId);
+  const items = await fetchNews(tickers, cfg.lookbackHours, cfg.newsapiApiKey);
+  if (!items.length) {
+    await sendMessage(cfg.telegramBotToken, cfg.telegramChatId, `No headlines found in the last ${cfg.lookbackHours}h.`);
+    return;
+  }
+  const decisions = await analyzeTickers(items, cfg.geminiApiKey, cfg.geminiModel);
+  const lines: string[] = [];
+  lines.push(`EOD News Signals (last ${cfg.lookbackHours}h)`);
+  for (const d of decisions.sort((a, b) => a.ticker.localeCompare(b.ticker))) {
+    const conf = Math.max(0, Math.min(100, Number(d.confidence) || 0));
+    const stars = Math.max(1, Math.min(5, Math.round(conf / 20)));
+    const starStr = "★".repeat(stars) + "☆".repeat(5 - stars);
+    const rationale = d.rationale || "News-driven signal";
+    lines.push(`- ${d.ticker}: ${d.action} (${conf}% | ${starStr})`);
+    lines.push(`  ${rationale}`);
+  }
+  await sendMessage(cfg.telegramBotToken, cfg.telegramChatId, lines.join("\n"));
+}
+
 async function main() {
   const argv = await yargs(hideBin(process.argv))
-    .option("mode", { choices: ["intraday", "eod"], demandOption: true })
+    .option("mode", { choices: ["intraday", "eod", "eod-news"], demandOption: true })
     .strict()
     .parse();
   if (argv.mode === "intraday") await runIntraday();
-  else await runEod();
+  else if (argv.mode === "eod") await runEod();
+  else await runEodNews();
 }
 
 main().catch((e) => {
