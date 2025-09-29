@@ -114,10 +114,12 @@ export class TgCommandHandler {
       }
     } else if (cmd === "/price") {
       await this.handlePrice(chatId, arg);
+    } else if (cmd === "/sources") {
+      await this.handleSources(chatId, arg);
     } else {
       await this.send(
         chatId,
-        "Commands:\n/add TSLA,AAPL\n/remove TSLA\n/list\n/news [TICKERS] [LOOKBACK] (e.g., /news TSLA,AAPL 7d)\n/price [TICKERS] (realtime)"
+        "Commands:\n/add TSLA,AAPL\n/remove TSLA\n/list\n/news [TICKERS] [LOOKBACK] (e.g., /news TSLA,AAPL 7d)\n/price [TICKERS] (realtime)\n/sources [TICKERS] [LOOKBACK]"
       );
     }
   }
@@ -144,6 +146,54 @@ export class TgCommandHandler {
     if (!tickers.length) return this.send(chatId, "No tickers configured. Use /add or set WATCHLIST.");
     const text = await buildRealtimePrices(tickers);
     await this.send(chatId, text);
+  }
+
+  private async handleSources(chatId: string, arg?: string) {
+    const parseLookback = (token: string): number | null => {
+      const m = token.match(/^(\d+)([hdwmy])$/i);
+      if (!m) return null;
+      const n = parseInt(m[1], 10);
+      const u = m[2].toLowerCase();
+      const unitToHours: Record<string, number> = { h: 1, d: 24, w: 24 * 7, m: 24 * 30, y: 24 * 365 };
+      const hours = n * unitToHours[u];
+      const minH = 24;
+      const maxH = 24 * 365;
+      return Math.max(minH, Math.min(maxH, hours));
+    };
+
+    let lookbackHours = this.cfg.lookbackHours;
+    let tickersArg = "";
+    if (arg && arg.trim()) {
+      const parts = arg.trim().split(/\s+/).filter(Boolean);
+      for (let i = parts.length - 1; i >= 0; i--) {
+        const lb = parseLookback(parts[i]);
+        if (lb !== null) { lookbackHours = lb; parts.splice(i, 1); break; }
+      }
+      tickersArg = parts.join(" ");
+    }
+
+    const requested = this.parseTickers(tickersArg);
+    const baseList = this.storage.listTickers(chatId);
+    const tickers = requested.length ? requested : (baseList.length ? baseList : this.cfg.tickers);
+    if (!tickers.length) return this.send(chatId, "No tickers configured. Use /add or set WATCHLIST.");
+
+    const items = await fetchNews(tickers, lookbackHours, this.cfg.newsapiApiKey);
+    if (!items.length) return this.send(chatId, `No headlines found in the last ${lookbackHours}h.`);
+    const byTicker: Record<string, { title: string; url: string; source: string }[]> = {};
+    for (const it of items) {
+      (byTicker[it.ticker] ||= []).push({ title: it.title, url: it.url, source: it.source });
+    }
+    const lines: string[] = [];
+    lines.push(`Sources (last ${lookbackHours}h)`);
+    for (const tk of Object.keys(byTicker).sort()) {
+      lines.push("");
+      lines.push(`[${tk}]`);
+      for (const e of byTicker[tk].slice(0, 10)) {
+        lines.push(`- ${e.source}: ${e.title}`);
+        lines.push(`  ${e.url}`);
+      }
+    }
+    await this.send(chatId, lines.join("\n"));
   }
 
   private formatDigest(results: any[], hours: number): string {
