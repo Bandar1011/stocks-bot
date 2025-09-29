@@ -31,10 +31,16 @@ function formatIntradayDigest(results: any[], hours: number): string {
   return lines.join("\n");
 }
 
+function getTickersFromDbOrEnv(storage: Storage, envTickers: string[], chatId: string): string[] {
+  const dbTickers = storage.listTickers(chatId);
+  return dbTickers.length ? dbTickers : envTickers;
+}
+
 async function runIntraday() {
   const cfg = loadConfig();
   const storage = new Storage(cfg.sqlitePath);
-  const allItems = await fetchNews(cfg.tickers, cfg.lookbackHours, cfg.newsapiApiKey);
+  const tickers = getTickersFromDbOrEnv(storage, cfg.tickers, cfg.telegramChatId);
+  const allItems = await fetchNews(tickers, cfg.lookbackHours, cfg.newsapiApiKey);
   const fresh = allItems.filter((it) => !storage.hasSent(it.url));
   if (!fresh.length) {
     await sendMessage(cfg.telegramBotToken, cfg.telegramChatId, `No notable new items in the last ${cfg.lookbackHours}h.`);
@@ -48,7 +54,9 @@ async function runIntraday() {
 
 async function runEod() {
   const cfg = loadConfig();
-  const msg = await buildEodSummary(cfg.tickers);
+  const storage = new Storage(cfg.sqlitePath);
+  const tickers = getTickersFromDbOrEnv(storage, cfg.tickers, cfg.telegramChatId);
+  const msg = await buildEodSummary(tickers);
   await sendMessage(cfg.telegramBotToken, cfg.telegramChatId, msg);
 }
 

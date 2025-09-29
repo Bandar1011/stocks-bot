@@ -8,7 +8,8 @@
     "start:intraday": "node --enable-source-maps dist/main.js --mode intraday",
     "start:eod": "node --enable-source-maps dist/main.js --mode eod",
     "dev:intraday": "tsx src/main.ts --mode intraday",
-    "dev:eod": "tsx src/main.ts --mode eod"
+    "dev:eod": "tsx src/main.ts --mode eod",
+    "dev:commands": "tsx src/runCommands.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.11.0",

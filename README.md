@@ -34,9 +34,17 @@ npm run dev:eod
 npm run build
 npm run start:intraday
 npm run start:eod
+
+# run Telegram command handler (add/remove/list/news)
+npm run dev:commands
 ```
 
 Notes
 - Deduplication: URLs recorded in SQLite (`sent_news`) after sending.
 - If no new items, bot sends: "No notable new items in the last Xh."
 - P1 criteria: earnings beat/miss, guidance changes, recalls, investigations, M&A, or explicit >5% move.
+- `/news` supports optional lookback: `h` hours, `d` days, `w` weeks, `m` months, `y` years. Range: 1d–1y. Examples:
+  - `/news` (uses default LOOKBACK_HOURS)
+  - `/news 48h` (DB watchlist, 48 hours)
+  - `/news TSLA,AAPL 7d` (specific tickers, 7 days)
+  - `/news 2w TSLA` (order-independent)

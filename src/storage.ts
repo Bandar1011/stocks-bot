@@ -14,6 +14,14 @@ export class Storage {
         sent_at INTEGER NOT NULL
       )`
     );
+    this.db.exec(
+      `CREATE TABLE IF NOT EXISTS watchlists (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        chat_id TEXT NOT NULL,
+        ticker TEXT NOT NULL,
+        UNIQUE(chat_id, ticker)
+      )`
+    );
   }
 
   hasSent(url: string): boolean {
@@ -31,6 +39,46 @@ export class Storage {
     } catch (e) {
       // ignore
     }
+  }
+
+  // Watchlist CRUD
+  addTickers(chatId: string, tickers: string[]): number {
+    const stmt = this.db.prepare(
+      "INSERT OR IGNORE INTO watchlists (chat_id, ticker) VALUES (?, ?)"
+    );
+    let count = 0;
+    for (const t of tickers) {
+      try {
+        const res = stmt.run(chatId, t.toUpperCase());
+        if (res.changes > 0) count += 1;
+      } catch {
+        // ignore
+      }
+    }
+    return count;
+  }
+
+  removeTickers(chatId: string, tickers: string[]): number {
+    const stmt = this.db.prepare(
+      "DELETE FROM watchlists WHERE chat_id = ? AND ticker = ?"
+    );
+    let count = 0;
+    for (const t of tickers) {
+      try {
+        const res = stmt.run(chatId, t.toUpperCase());
+        if (res.changes > 0) count += 1;
+      } catch {
+        // ignore
+      }
+    }
+    return count;
+  }
+
+  listTickers(chatId: string): string[] {
+    const rows = this.db
+      .prepare("SELECT ticker FROM watchlists WHERE chat_id = ? ORDER BY ticker")
+      .all(chatId) as { ticker: string }[];
+    return rows.map((r) => r.ticker);
   }
 }
 
