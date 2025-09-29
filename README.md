@@ -18,7 +18,7 @@ export TELEGRAM_CHAT_ID="<your_chat_id>"
 # Optional
 export NEWSAPI_API_KEY="<newsapi_key>"
 export GEMINI_API_KEY="<gemini_api_key>"
-export GEMINI_MODEL="gemini-1.5-flash"   # default
+ export GEMINI_MODEL="gemini-2.0-flash"   # default
 export LOOKBACK_HOURS=12                  # default
 export SQLITE_PATH="news.db"             # default
 ```

@@ -23,7 +23,7 @@ export function loadConfig(): Config {
   const telegramChatId = (process.env.TELEGRAM_CHAT_ID || "").trim();
   const newsapiApiKey = process.env.NEWSAPI_API_KEY || undefined;
   const geminiApiKey = process.env.GEMINI_API_KEY || undefined;
-  const geminiModel = process.env.GEMINI_MODEL || "gemini-1.5-flash";
+  const geminiModel = process.env.GEMINI_MODEL || "gemini-2.0-flash";
   const lookbackHours = parseInt(process.env.LOOKBACK_HOURS || "12", 10);
   const sqlitePath = process.env.SQLITE_PATH || "news.db";
 
