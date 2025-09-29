@@ -35,7 +35,7 @@ npm run build
 npm run start:intraday
 npm run start:eod
 
-# run Telegram command handler (add/remove/list/news)
+# run Telegram command handler (add/remove/list/news/price)
 npm run dev:commands
 ```
 
@@ -48,3 +48,4 @@ Notes
   - `/news 48h` (DB watchlist, 48 hours)
   - `/news TSLA,AAPL 7d` (specific tickers, 7 days)
   - `/news 2w TSLA` (order-independent)
+ - `/price` returns realtime quotes (watchlist by default, or pass tickers: `/price TSLA,AAPL`).

@@ -4,6 +4,7 @@ import { Config } from "./config.js";
 import { fetchNews } from "./news.js";
 import { summarizeNews } from "./summarizer.js";
 import { sendMessage } from "./telegramClient.js";
+import { buildRealtimePrices } from "./prices.js";
 
 export class TgCommandHandler {
   private botToken: string;
@@ -91,19 +92,26 @@ export class TgCommandHandler {
       const tickers = requested.length ? requested : (baseList.length ? baseList : this.cfg.tickers);
       if (!tickers.length) return this.send(chatId, "No tickers configured. Use /add or set WATCHLIST.");
       try {
-        const items = await fetchNews(tickers, lookbackHours, this.cfg.newsapiApiKey);
-        const fresh = items.filter((it) => !this.storage.hasSent(it.url));
-        if (!fresh.length) return this.send(chatId, `No notable new items in the last ${lookbackHours}h.`);
+        let items = await fetchNews(tickers, lookbackHours, this.cfg.newsapiApiKey);
+        let fresh = items.filter((it) => !this.storage.hasSent(it.url));
+        if (!fresh.length) {
+          // fallback: take the most recent 10 headlines anyway
+          items = items.slice(0, 10);
+          if (!items.length) return this.send(chatId, `No headlines found in the last ${lookbackHours}h.`);
+          fresh = items;
+        }
         const results = await summarizeNews(fresh, this.cfg.geminiApiKey, this.cfg.geminiModel);
         const msg = this.formatDigest(results, lookbackHours);
         await this.send(chatId, msg);
       } catch (e) {
         await this.send(chatId, "Failed to fetch news. Try again later.");
       }
+    } else if (cmd === "/price") {
+      await this.handlePrice(chatId, arg);
     } else {
       await this.send(
         chatId,
-        "Commands:\n/add TSLA,AAPL\n/remove TSLA\n/list\n/news [TICKERS] [LOOKBACK] (e.g., /news TSLA,AAPL 7d)"
+        "Commands:\n/add TSLA,AAPL\n/remove TSLA\n/list\n/news [TICKERS] [LOOKBACK] (e.g., /news TSLA,AAPL 7d)\n/price [TICKERS] (realtime)"
       );
     }
   }
@@ -121,6 +129,15 @@ export class TgCommandHandler {
       if (!text) continue;
       await this.handleCommand(chatId, text);
     }
+  }
+
+  private async handlePrice(chatId: string, arg?: string) {
+    const requested = this.parseTickers(arg || "");
+    const baseList = this.storage.listTickers(chatId);
+    const tickers = requested.length ? requested : (baseList.length ? baseList : this.cfg.tickers);
+    if (!tickers.length) return this.send(chatId, "No tickers configured. Use /add or set WATCHLIST.");
+    const text = await buildRealtimePrices(tickers);
+    await this.send(chatId, text);
   }
 
   private formatDigest(results: any[], hours: number): string {
