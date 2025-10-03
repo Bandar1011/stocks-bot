@@ -1,6 +1,7 @@
 
 <img width="443" height="339" alt="Screenshot 0007-10-04 at 4 49 11" src="https://github.com/user-attachments/assets/b6367caf-ce41-426e-a92e-227595eee658" />
 📈 St<img width="443" height="865" alt="Screenshot 0007-10-04 at 4 48 22" src="https://github.com/user-attachments/assets/95d575f9-88c5-460e-8630-256478bb69b5" />
+
 stocks Telegram Bot / 株式テレグラムボット
 
 EN: A TypeScript-powered Telegram bot that tracks stock tickers, fetches financial news, summarizes headlines with AI, and sends real-time digests or end-of-day reports.
